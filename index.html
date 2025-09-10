@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student Registration</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; }
+    h2 { text-align: center; }
+    form, table { margin: 20px auto; }
+    form { max-width: 400px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    label { display: block; margin-top: 10px; font-weight: bold; }
+    input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin: 5px; padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    table { border-collapse: collapse; width: 90%; background: #fff; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background: #007bff; color: white; }
+    .message { margin-top: 15px; padding: 10px; text-align: center; border-radius: 5px; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+  .error-text { color: #d9534f; font-size: 0.9em; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h2>{{ heading }}</h2>
+  <form id="studentForm">
+  <label for="first_name">First Name:</label>
+  <input id="first_name" name="first_name" required pattern="[A-Za-z\s-]{2,50}" title="2-50 letters, spaces or hyphens">
+  <div class="error-text" id="first_name_error" aria-live="polite"></div>
+
+  <label for="last_name">Last Name:</label>
+  <input id="last_name" name="last_name" required pattern="[A-Za-z\s-]{2,50}" title="2-50 letters, spaces or hyphens">
+  <div class="error-text" id="last_name_error" aria-live="polite"></div>
+
+  <label for="phone">Phone Number:</label>
+  <input id="phone" name="phone" required inputmode="numeric" maxlength="10" pattern="[5-9][0-9]{9}" title="10 digits, starting with 5-9">
+  <div class="error-text" id="phone_error" aria-live="polite"></div>
+
+  <label for="birthdate">Birthdate:</label>
+  <input type="date" id="birthdate" name="birthdate" required>
+  <div class="error-text" id="birthdate_error" aria-live="polite"></div>
+
+    <label>Email:</label>
+    <input type="email" id="email" name="email" required>
+
+  <button type="submit" id="submitBtn">Register</button>
+  <button type="button" id="cancelEditBtn" style="display:none; margin-left:8px;">Cancel Edit</button>
+  </form>
+
+  <div id="response" class="message" style="display:none;"></div>
+
+  <h2>All Students</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>First</th><th>Last</th><th>Phone</th><th>Birthdate</th><th>Email</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="studentTableBody"></tbody>
+  </table>
+
+  <!-- Confirmation modal -->
+  <div id="confirmModal" style="display:none; position:fixed; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
+    <div style="background:#fff; padding:16px; border-radius:6px; max-width:90%; margin:100px auto; width:320px; text-align:center;">
+      <p id="confirmText">Are you sure?</p>
+      <div style="margin-top:12px; display:flex; gap:8px; justify-content:center;">
+        <button id="confirmYes" style="background:#d9534f;">Delete</button>
+        <button id="confirmNo">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Load all students
+    async function loadStudents() {
+      const res = await fetch("/api/students");
+      const students = await res.json();
+      const tbody = document.getElementById("studentTableBody");
+      tbody.innerHTML = "";
+      students.forEach(s => {
+        const row = document.createElement("tr");
+        row.dataset.id = s.id;
+        row.innerHTML = `
+          <td>${s.id}</td>
+          <td class="cell-first">${s.first_name}</td>
+          <td class="cell-last">${s.last_name}</td>
+          <td class="cell-phone">${s.phone}</td>
+          <td class="cell-birth">${s.birthdate}</td>
+          <td class="cell-email">${s.email}</td>
+          <td>
+            <button class="btn-edit">Edit</button>
+            <button class="btn-delete">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // attach event listeners for edit/delete buttons
+      document.querySelectorAll('#studentTableBody .btn-edit').forEach(btn => {
+        btn.addEventListener('click', onEditClicked);
+      });
+      document.querySelectorAll('#studentTableBody .btn-delete').forEach(btn => {
+        btn.addEventListener('click', onDeleteClicked);
+      });
+    }
+
+    // Handle form submit (Add student) with client-side validation
+    document.getElementById("studentForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+
+      // clear inline errors
+      ['first_name','last_name','phone','birthdate'].forEach(id => {
+        const el = document.getElementById(id + '_error'); if (el) el.textContent = '';
+      });
+
+      const first = document.getElementById("first_name").value.trim();
+      const last = document.getElementById("last_name").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const birth = document.getElementById("birthdate").value;
+      const email = document.getElementById("email").value.trim();
+
+      let hasError = false;
+      const nameRe = /^[A-Za-z\s-]{2,50}$/;
+      const phoneRe = /^[5-9][0-9]{9}$/;
+
+      if (!nameRe.test(first)) {
+        document.getElementById('first_name_error').textContent = 'Enter 2-50 letters, spaces or hyphens';
+        hasError = true;
+      }
+      if (!nameRe.test(last)) {
+        document.getElementById('last_name_error').textContent = 'Enter 2-50 letters, spaces or hyphens';
+        hasError = true;
+      }
+      if (!phoneRe.test(phone)) {
+        document.getElementById('phone_error').textContent = 'Phone must be 10 digits and start with 5-9';
+        hasError = true;
+      }
+      if (!birth) {
+        document.getElementById('birthdate_error').textContent = 'Birthdate is required';
+        hasError = true;
+      } else {
+        const sel = new Date(birth + 'T00:00:00');
+        const today = new Date();
+        if (sel > today) {
+          document.getElementById('birthdate_error').textContent = 'Birthdate cannot be in the future';
+          hasError = true;
+        }
+      }
+
+      if (hasError) {
+        const box = document.getElementById("response");
+        box.style.display = "block";
+        box.textContent = 'Please fix the highlighted fields.';
+        box.className = 'message error';
+        return;
+      }
+
+      const formData = { first_name: first, last_name: last, phone: phone, birthdate: birth, email };
+
+      let res, result;
+      if (editingId) {
+        res = await fetch(`/api/students/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        result = await res.json();
+        const box = document.getElementById("response");
+        box.style.display = "block";
+        box.textContent = result.message || result.errors;
+        box.className = "message " + (result.success ? "success" : "error");
+        if (result.success) {
+          editingId = null;
+          document.getElementById('submitBtn').textContent = 'Register';
+          document.getElementById('cancelEditBtn').style.display = 'none';
+          this.reset();
+          loadStudents();
+        }
+      } else {
+        res = await fetch("/api/students", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData)
+        });
+        result = await res.json();
+        const box = document.getElementById("response");
+        box.style.display = "block";
+        box.textContent = result.message || result.errors;
+        box.className = "message " + (result.success ? "success" : "error");
+        if (result.success) {
+          this.reset();
+          loadStudents();
+        }
+      }
+    });
+
+    // Delete student
+    async function deleteStudent(id) {
+      if (!confirm("Are you sure you want to delete student " + id + "?")) return;
+      const res = await fetch(`/api/students/${id}`, { method: "DELETE" });
+      const result = await res.json();
+      alert(result.message || result.errors);
+      loadStudents();
+    }
+
+    // Edit student
+    async function editStudent(id) {
+      const newFirst = prompt("Enter new first name:");
+      const newLast = prompt("Enter new last name:");
+      const newPhone = prompt("Enter new phone number:");
+      const newBirth = prompt("Enter new birthdate (YYYY-MM-DD):");
+      const newEmail = prompt("Enter new email:");
+
+      if (!newFirst || !newLast || !newPhone || !newBirth || !newEmail) {
+        alert("All fields are required for editing.");
+        return;
+      }
+
+      const res = await fetch(`/api/students/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: newFirst,
+          last_name: newLast,
+          phone: newPhone,
+          birthdate: newBirth,
+          email: newEmail
+        })
+      });
+
+      const result = await res.json();
+      alert(result.message || result.errors);
+      loadStudents();
+    }
+
+    // Live field validation and DOB max
+    (function(){
+      const first = document.getElementById('first_name');
+      const last = document.getElementById('last_name');
+      const phone = document.getElementById('phone');
+      const birth = document.getElementById('birthdate');
+      const firstErr = document.getElementById('first_name_error');
+      const lastErr = document.getElementById('last_name_error');
+      const phoneErr = document.getElementById('phone_error');
+      const birthErr = document.getElementById('birthdate_error');
+
+      // set max for birthdate to today to prevent selecting future dates
+      if (birth) {
+        const today = new Date().toISOString().split('T')[0];
+        birth.setAttribute('max', today);
+      }
+
+      // name: no digits allowed; show inline error as user types
+      const nameAllowedRe = /^[A-Za-z\s-]*$/;
+      function bindNameInput(el, errEl) {
+        if (!el) return;
+        el.addEventListener('input', () => {
+          const v = el.value;
+          if (/\d/.test(v)) {
+            errEl.textContent = 'Numbers are not allowed';
+            return;
+          }
+          if (v.trim().length > 0 && !/^[A-Za-z\s-]{2,50}$/.test(v)) {
+            errEl.textContent = 'Enter 2-50 letters, spaces or hyphens';
+            return;
+          }
+          errEl.textContent = '';
+        });
+      }
+      bindNameInput(first, firstErr);
+      bindNameInput(last, lastErr);
+
+      // phone: digits only, start 5-9, 10 digits; live feedback
+      if (phone) {
+        phone.addEventListener('input', () => {
+          const v = phone.value;
+          if (/[^0-9]/.test(v)) {
+            phoneErr.textContent = 'Only digits allowed';
+            return;
+          }
+          if (v.length > 0 && !/^[5-9]/.test(v)) {
+            phoneErr.textContent = 'Must start with 5-9';
+            return;
+          }
+          if (v.length > 0 && v.length < 10) {
+            phoneErr.textContent = 'Phone must be 10 digits';
+            return;
+          }
+          phoneErr.textContent = '';
+        });
+      }
+
+      // birthdate: live check against future
+      if (birth) {
+        birth.addEventListener('input', () => {
+          const v = birth.value;
+          if (!v) {
+            birthErr.textContent = '';
+            return;
+          }
+          const sel = new Date(v + 'T00:00:00');
+          const today = new Date();
+          if (sel > today) {
+            birthErr.textContent = 'Birthdate cannot be in the future';
+          } else {
+            birthErr.textContent = '';
+          }
+        });
+      }
+    })();
+
+    // Initial load
+    window.onload = loadStudents;
+
+    // --- Form-based edit handlers ---
+    let editingId = null;
+
+    function onEditClicked(e) {
+      const row = e.target.closest('tr');
+      const id = row.dataset.id;
+      const first = row.querySelector('.cell-first').textContent;
+      const last = row.querySelector('.cell-last').textContent;
+      const phone = row.querySelector('.cell-phone').textContent;
+      const birth = row.querySelector('.cell-birth').textContent;
+      const email = row.querySelector('.cell-email').textContent;
+
+      // populate the registration form
+      document.getElementById('first_name').value = first;
+      document.getElementById('last_name').value = last;
+      document.getElementById('phone').value = phone;
+      document.getElementById('birthdate').value = birth;
+      document.getElementById('email').value = email;
+
+      editingId = id;
+      document.getElementById('submitBtn').textContent = 'Save Changes';
+      document.getElementById('cancelEditBtn').style.display = 'inline-block';
+      // scroll to form
+      document.getElementById('first_name').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // cancel edit and reset form
+    document.getElementById('cancelEditBtn').addEventListener('click', function(){
+      editingId = null;
+      document.getElementById('studentForm').reset();
+      document.getElementById('submitBtn').textContent = 'Register';
+      this.style.display = 'none';
+    });
+
+    // --- Modal delete handlers ---
+    let deleteTargetId = null;
+    function onDeleteClicked(e) {
+      const row = e.target.closest('tr');
+      deleteTargetId = row.dataset.id;
+      document.getElementById('confirmText').textContent = `Delete student ${deleteTargetId}?`;
+      document.getElementById('confirmModal').style.display = 'flex';
+    }
+
+    document.getElementById('confirmNo').addEventListener('click', () => {
+      deleteTargetId = null; document.getElementById('confirmModal').style.display = 'none';
+    });
+    document.getElementById('confirmYes').addEventListener('click', async () => {
+      if (!deleteTargetId) return;
+      const res = await fetch(`/api/students/${deleteTargetId}`, { method: 'DELETE' });
+      const result = await res.json();
+      alert(result.message || result.errors);
+      deleteTargetId = null; document.getElementById('confirmModal').style.display = 'none';
+      loadStudents();
+    });
+  </script>
+</body>
+</html>
